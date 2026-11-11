@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { GloveClient } from '../lib/ble'
-import type { GloveFrame } from '../lib/ble'
 import { SlidingWindow } from '../lib/sampleBuffer'
 import { REST_LABEL, SignClassifier } from '../lib/classifier'
 import type { ModelState } from '../lib/classifier'
+import type { DatasetRecording } from '../lib/datasetCsv'
 import { loadValue, removeValue, saveValue } from '../lib/storage'
 
 export type GloveStatus = 'Desconectado' | 'Conectando...' | 'Conectado' | 'Reconectando...'
@@ -36,6 +36,8 @@ export interface Calibration {
   closed: number[] | null
 }
 
+export const RECORD_SAMPLES = 50
+const COUNTDOWN_SECONDS = 3
 const WINDOW_SIZE = 50
 const STRIDE = 10
 const CONSENSUS = 3 // predicciones consecutivas iguales para aceptar una seña
@@ -44,6 +46,11 @@ const CALIB_MS = 1300
 
 const EMPTY_LIVE: LiveData = { flex: [0, 0, 0, 0, 0], accel: [0, 0, 0], gyro: [0, 0, 0], pred: null }
 const EMPTY_STATS: GloveStats = { hz: 0, lossPct: 0, frames: 0, fill: 0, windowSize: WINDOW_SIZE, inferMs: 0 }
+
+// Un solo guante por aplicación: el cliente y el modelo viven fuera de React.
+const client = new GloveClient()
+const classifier = new SignClassifier()
+const BLE_SUPPORTED = GloveClient.isSupported()
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x))
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -71,12 +78,16 @@ function friendlyError(err: unknown): string | null {
 interface Options {
   threshold: number
   onDetect: (label: string, conf: number) => void
+  onRecorded: (recording: DatasetRecording) => void
 }
 
-export function useGlove({ threshold, onDetect }: Options) {
-  const [client] = useState(() => new GloveClient())
-  const [classifier] = useState(() => new SignClassifier())
+interface ActiveRecording {
+  label: string
+  participant: string
+  samples: number[][]
+}
 
+export function useGlove({ threshold, onDetect, onRecorded }: Options) {
   const [status, setStatus] = useState<GloveStatus>('Desconectado')
   const [error, setError] = useState<string | null>(null)
   const [deviceName, setDeviceName] = useState('')
@@ -90,9 +101,15 @@ export function useGlove({ threshold, onDetect }: Options) {
   )
   const [calibrating, setCalibrating] = useState<'open' | 'closed' | null>(null)
 
+  // Grabador de dataset
+  const [countdown, setCountdown] = useState(0)
+  const [recordingLabel, setRecordingLabel] = useState<string | null>(null)
+  const [recordFill, setRecordFill] = useState(0)
+  const [recordings, setRecordings] = useState<DatasetRecording[]>([])
+
   // Estado de alta frecuencia: vive en refs para no re-renderizar a cada trama.
   const windowRef = useRef(new SlidingWindow(WINDOW_SIZE, STRIDE))
-  const lastFrame = useRef<GloveFrame | null>(null)
+  const lastFrame = useRef<{ accel: number[]; gyro: number[] } | null>(null)
   const flexNorm = useRef<number[]>([0, 0, 0, 0, 0])
   const pred = useRef<Prediction | null>(null)
   const lastSeq = useRef<number | null>(null)
@@ -106,17 +123,38 @@ export function useGlove({ threshold, onDetect }: Options) {
   const capture = useRef<{ kind: 'open' | 'closed'; samples: number[][] } | null>(null)
   const calRef = useRef(calibration)
   const userDisconnected = useRef(false)
-  const optsRef = useRef({ threshold, onDetect })
+  const recordingRef = useRef<ActiveRecording | null>(null)
+  const countdownTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const optsRef = useRef({ threshold, onDetect, onRecorded })
 
   useEffect(() => {
-    optsRef.current = { threshold, onDetect }
-  }, [threshold, onDetect])
+    optsRef.current = { threshold, onDetect, onRecorded }
+  }, [threshold, onDetect, onRecorded])
 
   useEffect(() => {
     saveValue('gloveLog', log)
   }, [log])
 
-  // Carga del modelo (offline desde caché del service worker).
+  // Las grabaciones viven solo en memoria: se avisa antes de cerrar la página con datos sin descargar.
+  useEffect(() => {
+    if (recordings.length === 0) return
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [recordings.length])
+
+  const cancelRecording = useCallback(() => {
+    if (countdownTimer.current) {
+      clearInterval(countdownTimer.current)
+      countdownTimer.current = null
+    }
+    recordingRef.current = null
+    setCountdown(0)
+    setRecordingLabel(null)
+    setRecordFill(0)
+  }, [])
+
+  // Carga del modelo (disponible sin conexión gracias al service worker).
   useEffect(() => {
     let cancelled = false
     classifier.load().then((state) => {
@@ -129,12 +167,13 @@ export function useGlove({ threshold, onDetect }: Options) {
     return () => {
       cancelled = true
     }
-  }, [classifier])
+  }, [])
 
-  // Conexión BLE: manejadores de tramas y desconexión.
+  // Manejadores de tramas y desconexión del guante.
   useEffect(() => {
     const infer = (w: number[][]) => {
-      if (!classifier.ready) return
+      // Durante una grabación no se emiten detecciones (evita hablar mientras se captura).
+      if (!classifier.ready || recordingRef.current || countdownTimer.current) return
       try {
         const t0 = performance.now()
         const probs = classifier.predict(w)
@@ -146,8 +185,7 @@ export function useGlove({ threshold, onDetect }: Options) {
         recent.current = [...recent.current, accepted].slice(-CONSENSUS)
 
         if (accepted === REST_LABEL) lastEmitted.current = null // permite repetir la misma seña tras un reposo
-        const stable =
-          recent.current.length === CONSENSUS && recent.current.every((l) => l === accepted)
+        const stable = recent.current.length === CONSENSUS && recent.current.every((l) => l === accepted)
         if (stable && accepted !== REST_LABEL && accepted !== 'Incierto' && accepted !== lastEmitted.current) {
           lastEmitted.current = accepted
           const d: Detection = { label: accepted, conf: top.conf, ts: Date.now() }
@@ -175,11 +213,26 @@ export function useGlove({ threshold, onDetect }: Options) {
 
       const flex = normalizeFlex(f.flex, calRef.current)
       flexNorm.current = flex
-      const sample = [
-        ...flex,
-        ...f.accel.map((a) => a / 16384), // g
-        ...f.gyro.map((g) => g / 131 / 250), // ≈ -1 … 1
-      ]
+      // Mismo vector que recibe el modelo: el dataset exportado coincide con la entrada de inferencia.
+      const sample = [...flex, ...f.accel.map((a) => a / 16384), ...f.gyro.map((g) => g / 131 / 250)]
+
+      const rec = recordingRef.current
+      if (rec) {
+        rec.samples.push(sample)
+        if (rec.samples.length >= RECORD_SAMPLES) {
+          recordingRef.current = null
+          const done: DatasetRecording = {
+            label: rec.label,
+            participant: rec.participant,
+            ts: Date.now(),
+            samples: rec.samples,
+          }
+          setRecordings((prev) => [...prev, done])
+          setRecordingLabel(null)
+          optsRef.current.onRecorded(done)
+        }
+      }
+
       const w = windowRef.current.push(sample)
       if (w) infer(w)
     }
@@ -189,6 +242,7 @@ export function useGlove({ threshold, onDetect }: Options) {
     }
 
     client.onDisconnect = async () => {
+      cancelRecording()
       if (userDisconnected.current) {
         setStatus('Desconectado')
         return
@@ -213,11 +267,12 @@ export function useGlove({ threshold, onDetect }: Options) {
       client.onBadFrame = undefined
       client.onDisconnect = undefined
       userDisconnected.current = true
+      cancelRecording()
       client.disconnect()
     }
-  }, [client, classifier])
+  }, [cancelRecording])
 
-  // Refresco de la UI a ~10 Hz mientras hay conexión.
+  // Refresco de la interfaz a ~10 Hz mientras hay conexión.
   useEffect(() => {
     if (status !== 'Conectado') return
     let ticks = 0
@@ -245,11 +300,12 @@ export function useGlove({ threshold, onDetect }: Options) {
         windowSize: windowRef.current.size,
         inferMs: inferMs.current,
       })
+      setRecordFill(recordingRef.current?.samples.length ?? 0)
     }, 100)
     return () => clearInterval(id)
   }, [status])
 
-  const resetSession = () => {
+  const resetSession = useCallback(() => {
     windowRef.current.reset()
     lastFrame.current = null
     pred.current = null
@@ -262,7 +318,7 @@ export function useGlove({ threshold, onDetect }: Options) {
     lastEmitted.current = null
     setLive(EMPTY_LIVE)
     setStats(EMPTY_STATS)
-  }
+  }, [])
 
   const connect = useCallback(async () => {
     setError(null)
@@ -277,15 +333,14 @@ export function useGlove({ threshold, onDetect }: Options) {
       setStatus('Desconectado')
       setError(friendlyError(err))
     }
-    // resetSession solo usa refs y setters estables.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client])
+  }, [resetSession])
 
   const disconnect = useCallback(() => {
     userDisconnected.current = true
+    cancelRecording()
     client.disconnect()
     setStatus('Desconectado')
-  }, [client])
+  }, [cancelRecording])
 
   const calibrate = useCallback((kind: 'open' | 'closed') => {
     if (!lastFrame.current || capture.current) return
@@ -316,8 +371,31 @@ export function useGlove({ threshold, onDetect }: Options) {
     setDetection(null)
   }, [])
 
+  /** Cuenta regresiva y captura de RECORD_SAMPLES muestras consecutivas (~1 s a 50 Hz). */
+  const startRecording = useCallback((label: string, participant: string) => {
+    if (!lastFrame.current || recordingRef.current || countdownTimer.current) return
+    let remaining = COUNTDOWN_SECONDS
+    setCountdown(remaining)
+    const id = setInterval(() => {
+      remaining--
+      if (remaining > 0) {
+        setCountdown(remaining)
+        return
+      }
+      clearInterval(id)
+      countdownTimer.current = null
+      setCountdown(0)
+      recordingRef.current = { label, participant, samples: [] }
+      setRecordingLabel(label)
+    }, 1000)
+    countdownTimer.current = id
+  }, [])
+
+  const undoLastRecording = useCallback(() => setRecordings((prev) => prev.slice(0, -1)), [])
+  const clearRecordings = useCallback(() => setRecordings([]), [])
+
   return {
-    supported: GloveClient.isSupported(),
+    supported: BLE_SUPPORTED,
     status,
     error,
     deviceName,
@@ -333,5 +411,13 @@ export function useGlove({ threshold, onDetect }: Options) {
     calibrate,
     resetCalibration,
     clearLog,
+    countdown,
+    recordingLabel,
+    recordFill,
+    recordings,
+    startRecording,
+    cancelRecording,
+    undoLastRecording,
+    clearRecordings,
   }
 }

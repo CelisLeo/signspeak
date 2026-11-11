@@ -2,24 +2,30 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { loadValue, saveValue } from '../lib/storage'
 
 export interface AppSettings {
-  rate: number // 0.5 – 1.5 (velocidad de voz)
-  pitch: number // 0.5 – 2 (tono)
+  rate: number // 0.5 – 1.5
+  pitch: number // 0.5 – 2
   volume: number // 0 – 1
   voiceURI: string // '' = voz por defecto del sistema
   autoSpeak: boolean // leer en voz alta las señas detectadas por el guante
-  threshold: number // confianza mínima para aceptar una detección (0.5 – 0.95)
+  threshold: number // confianza mínima para aceptar una detección
+  darkMode: boolean
 }
 
-export const DEFAULT_SETTINGS: AppSettings = {
+const hasSpeech = () => typeof window !== 'undefined' && 'speechSynthesis' in window
+
+const prefersDark = () =>
+  typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-color-scheme: dark)').matches
+
+/** El tema inicial sigue al sistema hasta que el usuario elige uno. */
+const defaultSettings = (): AppSettings => ({
   rate: 1,
   pitch: 1,
   volume: 1,
   voiceURI: '',
   autoSpeak: true,
   threshold: 0.8,
-}
-
-const hasSpeech = () => typeof window !== 'undefined' && 'speechSynthesis' in window
+  darkMode: prefersDark(),
+})
 
 function getSpanishVoices(): SpeechSynthesisVoice[] {
   if (!hasSpeech()) return []
@@ -27,7 +33,7 @@ function getSpanishVoices(): SpeechSynthesisVoice[] {
 }
 
 export function useSettings() {
-  const [settings, setSettings] = useState<AppSettings>(() => loadValue('settings', DEFAULT_SETTINGS))
+  const [settings, setSettings] = useState<AppSettings>(() => loadValue('settings', defaultSettings()))
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>(getSpanishVoices)
   const settingsRef = useRef(settings)
 
@@ -36,7 +42,11 @@ export function useSettings() {
     saveValue('settings', settings)
   }, [settings])
 
-  // Las voces del sistema se cargan de forma asíncrona en muchos navegadores.
+  useEffect(() => {
+    document.body.classList.toggle('dark', settings.darkMode)
+  }, [settings.darkMode])
+
+  // Muchos navegadores cargan las voces del sistema de forma asíncrona.
   useEffect(() => {
     if (!hasSpeech()) return
     const refresh = () => setVoices(getSpanishVoices())
@@ -48,7 +58,7 @@ export function useSettings() {
     setSettings((prev) => ({ ...prev, ...patch }))
   }, [])
 
-  const reset = useCallback(() => setSettings(DEFAULT_SETTINGS), [])
+  const reset = useCallback(() => setSettings(defaultSettings()), [])
 
   const speak = useCallback((text: string) => {
     if (!hasSpeech() || !text) return

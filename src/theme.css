@@ -1,0 +1,83 @@
+/*
+ * Tema oscuro. Se activa con la clase `.dark` en <body> (ver useSettings).
+ * Redefine las variables de App.css y ajusta los componentes con colores fijos.
+ * Debe importarse después de App.css y glove.css.
+ */
+:root { color-scheme: light; }
+
+body.dark {
+  color-scheme: dark;
+  --primary: #818CF8;
+  --primary-dark: #A5B4FC;
+  --primary-light: #1E2145;
+  --bg-color: #0B1020;
+  --surface: #161B2E;
+  --text-main: #F3F4F6;
+  --text-muted: #9CA3AF;
+  --success: #34D399;
+  --danger: #F87171;
+  background: linear-gradient(135deg, #0B1020 0%, #151A33 100%);
+}
+
+@media (max-width: 480px) {
+  body.dark { background: var(--surface); }
+}
+
+/* Superficies */
+body.dark .app-container { border-color: #1F2937; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6); }
+body.dark .main-content { background: #0F1426; }
+body.dark :is(.card, .status-card, .diagnostics-panel, .sign-visualizer, .letter-card, .history-item, .log-item) {
+  border-color: #252B45;
+}
+body.dark .history-item.selected { border-color: var(--primary); }
+body.dark .tile { background: #1B2140; border-color: #252B45; }
+
+/* Degradados suaves (iconos, tarjetas de seña, indicador de navegación, modales) */
+body.dark :is(.status-icon, .brand-logo-img, .letter-display, .sign-image-card, .history-item.selected,
+  .nav-indicator, .modal-image-container, .modal-media) {
+  background: linear-gradient(135deg, #1E2145, #2A2F66);
+}
+body.dark .modal-image-container.clickable:active { background: #2A2F66; }
+
+/* Navegación, modales y avisos */
+body.dark .bottom-nav {
+  background: rgba(22, 27, 46, 0.85);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+body.dark .modal-content { background: var(--surface); }
+body.dark .modal-close { background: #252B45; color: var(--text-main); }
+body.dark .modal-close:active { background: #374151; }
+body.dark .toast { background: rgba(229, 231, 235, 0.96); color: #111827; }
+body.dark .offline-banner { background: #78350F; color: #FEF3C7; }
+body.dark .notice { background: #3A2A0B; color: #FCD34D; border-color: #78350F; }
+
+/* Botones */
+body.dark .btn-primary { background: linear-gradient(135deg, #6366F1, #4F46E5); }
+body.dark .btn-primary:disabled { background: #374151; color: #9CA3AF; }
+body.dark .rec-btn.recording { background: linear-gradient(135deg, #EF4444, #DC2626); }
+body.dark .btn-secondary { background: #1E2145; border-color: #2A2F66; color: var(--primary-dark); }
+body.dark .btn-connect { background: #252B45; }
+body.dark .btn-connect.connected.danger { background: #3B1B1F; color: #FCA5A5; border-color: #7F1D1D; }
+body.dark .btn-clear { background: #3B1B1F; color: #FCA5A5; border-color: #7F1D1D; }
+body.dark .history-del:hover { background: #3B1B1F; color: #FCA5A5; }
+
+/* Formularios */
+body.dark :is(.input-text, select, input[type='text']) {
+  background: #11162A; color: var(--text-main); border-color: #2D3553;
+}
+body.dark ::placeholder { color: #6B7280; }
+body.dark .library-toggle { background: #11162A; }
+body.dark .library-toggle button.active { background: #2A2F66; color: var(--primary-dark); }
+body.dark .switch { background: #4B5563; }
+body.dark .switch.on { background: #6366F1; }
+
+/* Medidores y estados */
+body.dark .meter-track { background: #2D3553; }
+body.dark .meter-fill { background: linear-gradient(90deg, #818CF8, #6366F1); }
+body.dark .meter-zero { background: #9CA3AF; }
+body.dark .detect-big { background: linear-gradient(135deg, #064E3B, #065F46); color: #A7F3D0; }
+body.dark .chip-ok { background: #064E3B; color: #6EE7B7; }
+body.dark .chip-warn { background: #78350F; color: #FCD34D; }
+body.dark .chip-err { background: #7F1D1D; color: #FCA5A5; }
+body.dark .chip-idle { background: #374151; color: #D1D5DB; }

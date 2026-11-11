@@ -2,41 +2,22 @@ import { useCallback, useEffect, useState } from 'react'
 import type { CSSProperties, KeyboardEvent } from 'react'
 import './App.css'
 import './glove.css'
+import './theme.css'
 import { useSettings } from './hooks/useSettings'
-import { useGlove } from './hooks/useGlove'
+import { useGlove, RECORD_SAMPLES } from './hooks/useGlove'
 import { loadValue, saveValue } from './lib/storage'
 import { DEVICE_NAME_PREFIX } from './lib/ble'
 import { REST_LABEL } from './lib/classifier'
+import { buildCsv, datasetFileName, downloadCsv } from './lib/datasetCsv'
+import type { DatasetRecording } from './lib/datasetCsv'
+import type { SignMedia } from './lib/signMedia'
+import { ALPHABET, LSM_VOCABULARY, VOCAB_WORDS } from './lib/vocabulary'
+import type { VocabItem } from './lib/vocabulary'
 import { CenterMeter, Chip, ConfirmDialog, Meter, Switch, Tile } from './components/ui'
+import { SignMediaView } from './components/SignMedia'
+import { VocabularyGrid } from './components/VocabularyGrid'
 
-const ALPHABET = [
-  'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'LL',
-  'M', 'N', 'Ñ', 'O', 'P', 'Q', 'R', 'RR', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-]
-
-interface VocabItem {
-  id: number
-  word: string
-  icon: string
-}
-
-const LSM_VOCABULARY: VocabItem[] = [
-  { id: 1, word: 'Hola', icon: '👋' },
-  { id: 2, word: 'Gracias', icon: '🙏' },
-  { id: 3, word: 'Por favor', icon: '🤲' },
-  { id: 4, word: 'Sí', icon: '👍' },
-  { id: 5, word: 'No', icon: '👎' },
-  { id: 6, word: 'Bien', icon: '👌' },
-  { id: 7, word: 'Mal', icon: '👎' },
-  { id: 8, word: 'Agua', icon: '💧' },
-  { id: 9, word: 'Comida', icon: '🍎' },
-  { id: 10, word: 'Baño', icon: '🚻' },
-  { id: 11, word: 'Ayuda', icon: '🆘' },
-  { id: 12, word: 'Amigo', icon: '🤝' },
-  { id: 13, word: 'Familia', icon: '👨‍👩‍👧' },
-  { id: 14, word: 'Amor', icon: '❤️' },
-  { id: 15, word: 'Casa', icon: '🏠' },
-]
+const APP_VERSION = '3.0'
 
 const NAV_ITEMS = [
   { id: 'home', icon: '🏡', label: 'Inicio' },
@@ -48,6 +29,7 @@ const NAV_ITEMS = [
 
 const FINGERS = ['Pulgar', 'Índice', 'Medio', 'Anular', 'Meñique']
 const AXES = ['X', 'Y', 'Z']
+const RECORD_LABELS = [...VOCAB_WORDS, REST_LABEL]
 
 const iconFor = (word: string) => LSM_VOCABULARY.find((v) => v.word === word)?.icon ?? '🤟'
 const timeOf = (ts: number) =>
@@ -59,6 +41,11 @@ interface PendingConfirm {
   action: () => void
 }
 
+interface SelectedSign {
+  item: VocabItem
+  media: SignMedia | null
+}
+
 function App() {
   const [currentTab, setCurrentTab] = useState('home')
   const [dailyLetter, setDailyLetter] = useState(() => loadValue('dailyLetter', 'S'))
@@ -67,10 +54,13 @@ function App() {
   const [libraryMode, setLibraryMode] = useState<'alphabet' | 'vocabulary'>('alphabet')
   const [letterBag, setLetterBag] = useState<string[]>([])
   const [selectedLetter, setSelectedLetter] = useState<string | null>(null)
+  const [selectedSign, setSelectedSign] = useState<SelectedSign | null>(null)
   const [selectedHistoryIndex, setSelectedHistoryIndex] = useState(0)
   const [toast, setToast] = useState<string | null>(null)
   const [pending, setPending] = useState<PendingConfirm | null>(null)
   const [online, setOnline] = useState(() => navigator.onLine)
+  const [recordLabel, setRecordLabel] = useState(RECORD_LABELS[0])
+  const [participant, setParticipant] = useState(() => loadValue('participant', ''))
 
   const { settings, update, reset: resetSettings, voices, speak, speechSupported } = useSettings()
 
@@ -83,12 +73,18 @@ function App() {
     [settings.autoSpeak, speak],
   )
 
-  const glove = useGlove({ threshold: settings.threshold, onDetect: handleDetect })
-  const isLinked = glove.status === 'Conectado' || glove.status === 'Reconectando...'
+  const handleRecorded = useCallback((rec: DatasetRecording) => {
+    navigator.vibrate?.(40)
+    setToast(`✓ ${rec.label} grabada`)
+  }, [])
 
-  // --- Persistencia ---
+  const glove = useGlove({ threshold: settings.threshold, onDetect: handleDetect, onRecorded: handleRecorded })
+  const isLinked = glove.status === 'Conectado' || glove.status === 'Reconectando...'
+  const recordBusy = glove.countdown > 0 || glove.recordingLabel !== null
+
   useEffect(() => saveValue('history', history), [history])
   useEffect(() => saveValue('dailyLetter', dailyLetter), [dailyLetter])
+  useEffect(() => saveValue('participant', participant), [participant])
 
   useEffect(() => {
     if (!toast) return
@@ -110,7 +106,6 @@ function App() {
   const askConfirm = (message: string, label: string, action: () => void) =>
     setPending({ message, label, action })
 
-  // --- Guante ---
   const handleConnect = () => {
     if (isLinked) {
       askConfirm('¿Quieres desconectar el guante?', 'Desconectar', () => {
@@ -122,7 +117,12 @@ function App() {
     glove.connect()
   }
 
-  // --- Traducción de texto ---
+  const handleDownloadCsv = () => {
+    if (glove.recordings.length === 0) return
+    downloadCsv(buildCsv(glove.recordings), datasetFileName())
+    setToast(`CSV descargado · ${glove.recordings.length} grabaciones`)
+  }
+
   const handleTranslate = () => {
     const trimmed = inputText.trim()
     if (trimmed === '') return
@@ -176,10 +176,16 @@ function App() {
     speak(letter)
   }
 
+  const openSignModal = (item: VocabItem, media: SignMedia | null) => {
+    setSelectedSign({ item, media })
+    speak(item.word)
+  }
+
   const renderSignCards = (text: string) => {
     const upperText = text.toUpperCase().trim()
     if (!upperText) return null
 
+    // "LL" y "RR" son letras propias del abecedario de la LSM.
     const tokens: string[] = []
     let i = 0
     while (i < upperText.length) {
@@ -225,7 +231,6 @@ function App() {
 
   const activeIndex = NAV_ITEMS.findIndex((item) => item.id === currentTab)
 
-  // --- Estado del modelo ---
   const modelChip = {
     loading: { tone: 'idle', text: 'Cargando modelo…' },
     ready: { tone: 'ok', text: 'Modelo listo · funciona sin internet' },
@@ -235,6 +240,7 @@ function App() {
 
   const statusTone = glove.status === 'Conectado' ? 'ok' : glove.status === 'Desconectado' ? 'idle' : 'warn'
   const hasCalibration = !!(glove.calibration.open && glove.calibration.closed)
+  const recordedOfLabel = glove.recordings.filter((r) => r.label === recordLabel).length
 
   const renderScreen = () => {
     switch (currentTab) {
@@ -420,6 +426,88 @@ function App() {
               </p>
             </div>
 
+            <div className="diagnostics-panel">
+              <h3>Grabar dataset</h3>
+              <p className="hint">
+                Elige la seña, toca Grabar y hazla cuando termine la cuenta regresiva. Cada grabación captura{' '}
+                {RECORD_SAMPLES} muestras (≈1 s). Acumula las que necesites y descarga un solo CSV.
+              </p>
+              <div className="recorder-fields">
+                <label className="field">
+                  <span className="field-label">Seña</span>
+                  <select value={recordLabel} onChange={(e) => setRecordLabel(e.target.value)} disabled={recordBusy}>
+                    {RECORD_LABELS.map((label) => (
+                      <option key={label} value={label}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span className="field-label">Participante</span>
+                  <input
+                    type="text"
+                    value={participant}
+                    onChange={(e) => setParticipant(e.target.value)}
+                    maxLength={12}
+                    placeholder="P01"
+                    disabled={recordBusy}
+                  />
+                </label>
+              </div>
+
+              <button
+                className={`btn-primary rec-btn ${glove.recordingLabel ? 'recording' : ''}`}
+                onClick={() => glove.startRecording(recordLabel, participant.trim())}
+                disabled={!isLinked || recordBusy}
+              >
+                {glove.countdown > 0
+                  ? `Prepárate… ${glove.countdown}`
+                  : glove.recordingLabel
+                    ? 'Grabando…'
+                    : '⏺ Grabar'}
+              </button>
+
+              {glove.countdown > 0 && (
+                <button className="btn-secondary wide" onClick={glove.cancelRecording}>
+                  Cancelar
+                </button>
+              )}
+              {glove.recordingLabel && (
+                <div className="rec-progress">
+                  <Meter label="Captura" value={glove.recordFill / RECORD_SAMPLES} text={`${glove.recordFill}/${RECORD_SAMPLES}`} />
+                </div>
+              )}
+
+              <div className="tiles tiles-3">
+                <Tile value={`${glove.recordings.length}`} label="Grabaciones" />
+                <Tile value={`${recordedOfLabel}`} label={`De «${recordLabel}»`} />
+                <Tile value={`${(glove.recordings.length * RECORD_SAMPLES).toLocaleString('es-MX')}`} label="Filas del CSV" />
+              </div>
+
+              <button className="btn-primary rec-download" onClick={handleDownloadCsv} disabled={glove.recordings.length === 0}>
+                ⬇ Descargar CSV
+              </button>
+              <div className="recorder-actions">
+                <button className="btn-secondary" onClick={glove.undoLastRecording} disabled={glove.recordings.length === 0}>
+                  Deshacer última
+                </button>
+                <button
+                  className="btn-secondary"
+                  onClick={() =>
+                    askConfirm(`¿Descartar las ${glove.recordings.length} grabaciones sin descargar?`, 'Descartar', () => {
+                      glove.clearRecordings()
+                      setToast('Grabaciones descartadas')
+                    })
+                  }
+                  disabled={glove.recordings.length === 0}
+                >
+                  Vaciar
+                </button>
+              </div>
+              <p className="hint">Las grabaciones se guardan solo en memoria: descarga el CSV antes de cerrar la app.</p>
+            </div>
+
             <div className="history-section">
               <div className="history-header">
                 <h3>Señas detectadas</h3>
@@ -481,14 +569,7 @@ function App() {
                 ))}
               </div>
             ) : (
-              <div className="letters-grid">
-                {LSM_VOCABULARY.map((sign) => (
-                  <button key={sign.id} className="letter-card vocab-card" onClick={() => speak(sign.word)}>
-                    <span className="vocab-icon">{sign.icon}</span>
-                    <span className="letter-char">{sign.word}</span>
-                  </button>
-                ))}
-              </div>
+              <VocabularyGrid onOpen={openSignModal} />
             )}
           </div>
         )
@@ -579,8 +660,19 @@ function App() {
           <div className="screen fade-in">
             <header className="screen-header">
               <h1>Ajustes</h1>
-              <p>Voz, detección y datos guardados</p>
+              <p>Apariencia, voz, detección y datos guardados</p>
             </header>
+
+            <div className="card settings-card">
+              <h3 className="settings-title">Apariencia</h3>
+              <div className="switch-row">
+                <span>
+                  <strong>Modo oscuro</strong>
+                  <small>Reduce el brillo de la pantalla</small>
+                </span>
+                <Switch checked={settings.darkMode} onChange={(v) => update({ darkMode: v })} label="Modo oscuro" />
+              </div>
+            </div>
 
             <div className="card settings-card">
               <h3 className="settings-title">Voz</h3>
@@ -712,7 +804,7 @@ function App() {
             </div>
 
             <p className="hint centered">
-              SignSpeak es un apoyo para la comunicación y no sustituye a un intérprete de LSM.
+              SignSpeak v{APP_VERSION} · Apoyo para la comunicación; no sustituye a un intérprete de LSM.
             </p>
           </div>
         )
@@ -762,6 +854,29 @@ function App() {
             </button>
             <h2>{selectedLetter}</h2>
             <p className="modal-hint">👆 Presiona la imagen para escuchar</p>
+          </div>
+        </div>
+      )}
+
+      {selectedSign && (
+        <div className="modal-overlay" onClick={() => setSelectedSign(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setSelectedSign(null)} aria-label="Cerrar">
+              ✕
+            </button>
+            <div className="modal-media">
+              {selectedSign.media ? (
+                <SignMediaView media={selectedSign.media} mode="full" alt={`Seña: ${selectedSign.item.word}`} />
+              ) : (
+                <span className="modal-emoji" aria-hidden="true">
+                  {selectedSign.item.icon}
+                </span>
+              )}
+            </div>
+            <h2 className="modal-word">{selectedSign.item.word}</h2>
+            <button className="btn-secondary" onClick={() => speak(selectedSign.item.word)}>
+              🔊 Escuchar
+            </button>
           </div>
         </div>
       )}

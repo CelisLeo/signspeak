@@ -16,8 +16,36 @@ export default defineConfig({
         'favicon.svg',
         'icons.svg',
         'logo.png',
-        'letras/**/*.png'
+        'letras/**/*.png',
+        'model/**/*',
+        'videos/**/*'
       ],
+      workbox: {
+        // Precachea la app completa, incluido el modelo de IA (model.json, *.bin y meta.json)
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,json,bin,webmanifest,mp4,webm,gif}'],
+        // TensorFlow.js genera un chunk grande: se sube el límite (por defecto 2 MB)
+        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
+        cleanupOutdatedCaches: true,
+        navigateFallback: `${base}index.html`,
+        runtimeCaching: [
+          {
+            // CSS de Google Fonts (App.css importa Inter)
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+            handler: 'StaleWhileRevalidate',
+            options: { cacheName: 'google-fonts-css' }
+          },
+          {
+            // Archivos de la fuente
+            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-files',
+              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] }
+            }
+          }
+        ]
+      },
       manifest: {
         name: 'SignSpeak - Traductor LSM',
         short_name: 'SignSpeak',
