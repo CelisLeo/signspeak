@@ -295,19 +295,26 @@ function App() {
             )}
 
             <div className="card highlight-card">
-              <h3>Letra del día</h3>
-              <button className="letter-display" onClick={() => openLetterModal(dailyLetter)} aria-label={`Ver seña de la letra ${dailyLetter}`}>
+            <h3>Letra del día</h3>
+            <button
+              className="letter-display"
+              onClick={() => openLetterModal(dailyLetter)}
+              aria-label={`Ver seña de la letra ${dailyLetter}`}
+            >
+              <span className="letter-frame">
+                <span className="letter-badge" aria-hidden="true">{dailyLetter}</span>
                 <img
                   src={`${import.meta.env.BASE_URL}letras/${dailyLetter}.png`}
                   alt={`Seña ${dailyLetter}`}
                   className="letter-img-large"
                 />
-              </button>
-              <button className="btn-primary" onClick={generateNewLetter}>
-                ✨ Generar nueva letra
-              </button>
-            </div>
+              </span>
+            </button>
+            <button className="btn-primary" onClick={generateNewLetter}>
+              ✨ Generar nueva letra
+            </button>
           </div>
+        </div>
         )
 
       case 'glove':
