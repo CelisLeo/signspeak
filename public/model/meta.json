@@ -1,7 +1,21 @@
 {
   "labels": [
-    "Hola", "Gracias", "Por favor", "Sí", "No", "Bien", "Mal", "Agua",
-    "Comida", "Baño", "Ayuda", "Amigo", "Familia", "Amor", "Casa", "Reposo"
+    "Hola",
+    "Gracias",
+    "Por favor",
+    "Sí",
+    "No",
+    "Bien",
+    "Mal",
+    "Agua",
+    "Comida",
+    "Baño",
+    "Ayuda",
+    "Amigo",
+    "Familia",
+    "Amor",
+    "Casa",
+    "Reposo"
   ],
   "windowSize": 50
 }
