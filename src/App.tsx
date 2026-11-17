@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent } from 'react'
 import './App.css'
 import './glove.css'
@@ -17,7 +17,9 @@ import { CenterMeter, Chip, ConfirmDialog, Meter, Switch, Tile } from './compone
 import { SignMediaView } from './components/SignMedia'
 import { VocabularyGrid } from './components/VocabularyGrid'
 
-const APP_VERSION = '3.0'
+import { useRegisterSW } from 'virtual:pwa-register/react'
+
+const APP_VERSION = '3.4'
 
 const NAV_ITEMS = [
   { id: 'home', icon: '🏡', label: 'Inicio' },
@@ -63,6 +65,39 @@ function App() {
   const [participant, setParticipant] = useState(() => loadValue('participant', ''))
 
   const { settings, update, reset: resetSettings, voices, speak, speechSupported } = useSettings()
+
+  const registrationRef = useRef<ServiceWorkerRegistration | undefined>(undefined)
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const {
+    needRefresh: [needRefresh],
+    updateServiceWorker,
+  } = useRegisterSW({
+    onRegisteredSW(_url, registration) {
+      registrationRef.current = registration
+    },
+  })
+
+  const handleUpdateClick = async () => {
+    if (needRefresh) {
+      updateServiceWorker(true) // activa la nueva versión y recarga la página
+      return
+    }
+    const registration = registrationRef.current
+    if (!registration) {
+      setToast('Las actualizaciones solo funcionan en la versión instalada')
+      return
+    }
+    setCheckingUpdate(true)
+    try {
+      await registration.update()
+      if (registration.installing) setToast('Descargando actualización…')
+      else if (!registration.waiting) setToast('Estás al día ✅')
+    } catch {
+      setToast('No se pudo buscar: revisa tu conexión')
+    } finally {
+      setCheckingUpdate(false)
+    }
+  }
 
   const handleDetect = useCallback(
     (label: string) => {
@@ -813,6 +848,13 @@ function App() {
             <p className="hint centered">
               SignSpeak v{APP_VERSION} · Apoyo para la comunicación; no sustituye a un intérprete de LSM.
             </p>
+            <button
+              className={`btn-secondary wide btn-update ${needRefresh ? 'available' : ''}`}
+              onClick={handleUpdateClick}
+              disabled={checkingUpdate}
+            >
+              {needRefresh ? '⬇️ Instalar nueva versión' : checkingUpdate ? 'Buscando…' : '🔄 Buscar actualizaciones'}
+            </button>
           </div>
         )
 

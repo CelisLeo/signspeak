@@ -81,3 +81,9 @@ body.dark .chip-ok { background: #064E3B; color: #6EE7B7; }
 body.dark .chip-warn { background: #78350F; color: #FCD34D; }
 body.dark .chip-err { background: #7F1D1D; color: #FCA5A5; }
 body.dark .chip-idle { background: #374151; color: #D1D5DB; }
+
+body.dark .btn-update.available {
+  background: linear-gradient(135deg, #10B981, #059669);
+  border-color: #059669;
+  color: #fff;
+}
