@@ -244,7 +244,11 @@ Desarrollado con pasión por el equipo de Taller de Investigación II
 
 ## 🕘 Historial de Versiones
 
-### V3.5 (Actual)
+### V3.6 (Actual)
+- Biblioteca de las 15 señas completa con videos optimizados en formato cuadrado.
+- Integración final de todo el vocabulario visual en la app.
+
+### V3.5
 - Agregado el soporte de video/GIF en la biblioteca de señas (Hola, Gracias, Por favor, Sí, No, Bien).
 - Optimización del peso de la app.
 
