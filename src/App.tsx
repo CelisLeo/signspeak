@@ -19,7 +19,7 @@ import { VocabularyGrid } from './components/VocabularyGrid'
 
 import { useRegisterSW } from 'virtual:pwa-register/react'
 
-const APP_VERSION = '3.6'
+const APP_VERSION = '3.7'
 
 const NAV_ITEMS = [
   { id: 'home', icon: '🏡', label: 'Inicio' },

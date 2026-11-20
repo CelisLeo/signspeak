@@ -244,7 +244,10 @@ Desarrollado con pasión por el equipo de Taller de Investigación II
 
 ## 🕘 Historial de Versiones
 
-### V3.6 (Actual)
+### V3.7 (Actual)
+- Modelo de IA mejorado y mejor entrenado.
+
+### V3.6
 - Biblioteca de las 15 señas completa con videos optimizados en formato cuadrado.
 - Integración final de todo el vocabulario visual en la app.
 
