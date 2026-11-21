@@ -244,8 +244,11 @@ Desarrollado con pasión por el equipo de Taller de Investigación II
 
 ## 🕘 Historial de Versiones
 
-### V3.7 (Actual)
-- Modelo de IA mejorado y mejor entrenado.
+### V3.8 (Actual)
+- Actualización e integración del nuevo modelo de IA optimizado.
+
+### V3.7
+- Actualización del modelo de IA con versión avanzada.
 
 ### V3.6
 - Biblioteca de las 15 señas completa con videos optimizados en formato cuadrado.
