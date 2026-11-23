@@ -19,7 +19,7 @@ import { VocabularyGrid } from './components/VocabularyGrid'
 
 import { useRegisterSW } from 'virtual:pwa-register/react'
 
-const APP_VERSION = '3.8'
+const APP_VERSION = '3.9'
 
 const NAV_ITEMS = [
   { id: 'home', icon: '🏡', label: 'Inicio' },
@@ -351,7 +351,7 @@ function App() {
           </div>
         </div>
         )
-
+      
       case 'glove':
         return (
           <div className={`screen fade-in ${isLinked ? '' : 'is-offline'}`}>
@@ -468,87 +468,89 @@ function App() {
               </p>
             </div>
 
-            <div className="diagnostics-panel">
-              <h3>Grabar dataset</h3>
-              <p className="hint">
-                Elige la seña, toca Grabar y hazla cuando termine la cuenta regresiva. Cada grabación captura{' '}
-                {RECORD_SAMPLES} muestras (≈1 s). Acumula las que necesites y descarga un solo CSV.
-              </p>
-              <div className="recorder-fields">
-                <label className="field">
-                  <span className="field-label">Seña</span>
-                  <select value={recordLabel} onChange={(e) => setRecordLabel(e.target.value)} disabled={recordBusy}>
-                    {RECORD_LABELS.map((label) => (
-                      <option key={label} value={label}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field">
-                  <span className="field-label">Participante</span>
-                  <input
-                    type="text"
-                    value={participant}
-                    onChange={(e) => setParticipant(e.target.value)}
-                    maxLength={12}
-                    placeholder="P01"
-                    disabled={recordBusy}
-                  />
-                </label>
-              </div>
-
-              <button
-                className={`btn-primary rec-btn ${glove.recordingLabel ? 'recording' : ''}`}
-                onClick={() => glove.startRecording(recordLabel, participant.trim())}
-                disabled={!isLinked || recordBusy}
-              >
-                {glove.countdown > 0
-                  ? `Prepárate… ${glove.countdown}`
-                  : glove.recordingLabel
-                    ? 'Grabando…'
-                    : '⏺ Grabar'}
-              </button>
-
-              {glove.countdown > 0 && (
-                <button className="btn-secondary wide" onClick={glove.cancelRecording}>
-                  Cancelar
-                </button>
-              )}
-              {glove.recordingLabel && (
-                <div className="rec-progress">
-                  <Meter label="Captura" value={glove.recordFill / RECORD_SAMPLES} text={`${glove.recordFill}/${RECORD_SAMPLES}`} />
+            {settings.showDatasetRecorder && (
+              <div className="diagnostics-panel">
+                <h3>Grabar dataset</h3>
+                <p className="hint">
+                  Elige la seña, toca Grabar y hazla cuando termine la cuenta regresiva. Cada grabación captura{' '}
+                  {RECORD_SAMPLES} muestras (≈1 s). Acumula las que necesites y descarga un solo CSV.
+                </p>
+                <div className="recorder-fields">
+                  <label className="field">
+                    <span className="field-label">Seña</span>
+                    <select value={recordLabel} onChange={(e) => setRecordLabel(e.target.value)} disabled={recordBusy}>
+                      {RECORD_LABELS.map((label) => (
+                        <option key={label} value={label}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span className="field-label">Participante</span>
+                    <input
+                      type="text"
+                      value={participant}
+                      onChange={(e) => setParticipant(e.target.value)}
+                      maxLength={12}
+                      placeholder="P01"
+                      disabled={recordBusy}
+                    />
+                  </label>
                 </div>
-              )}
 
-              <div className="tiles tiles-3">
-                <Tile value={`${glove.recordings.length}`} label="Grabaciones" />
-                <Tile value={`${recordedOfLabel}`} label={`De «${recordLabel}»`} />
-                <Tile value={`${(glove.recordings.length * RECORD_SAMPLES).toLocaleString('es-MX')}`} label="Filas del CSV" />
-              </div>
-
-              <button className="btn-primary rec-download" onClick={handleDownloadCsv} disabled={glove.recordings.length === 0}>
-                ⬇ Descargar CSV
-              </button>
-              <div className="recorder-actions">
-                <button className="btn-secondary" onClick={glove.undoLastRecording} disabled={glove.recordings.length === 0}>
-                  Deshacer última
-                </button>
                 <button
-                  className="btn-secondary"
-                  onClick={() =>
-                    askConfirm(`¿Descartar las ${glove.recordings.length} grabaciones sin descargar?`, 'Descartar', () => {
-                      glove.clearRecordings()
-                      setToast('Grabaciones descartadas')
-                    })
-                  }
-                  disabled={glove.recordings.length === 0}
+                  className={`btn-primary rec-btn ${glove.recordingLabel ? 'recording' : ''}`}
+                  onClick={() => glove.startRecording(recordLabel, participant.trim())}
+                  disabled={!isLinked || recordBusy}
                 >
-                  Vaciar
+                  {glove.countdown > 0
+                    ? `Prepárate… ${glove.countdown}`
+                    : glove.recordingLabel
+                      ? 'Grabando…'
+                      : '⏺ Grabar'}
                 </button>
+
+                {glove.countdown > 0 && (
+                  <button className="btn-secondary wide" onClick={glove.cancelRecording}>
+                    Cancelar
+                  </button>
+                )}
+                {glove.recordingLabel && (
+                  <div className="rec-progress">
+                    <Meter label="Captura" value={glove.recordFill / RECORD_SAMPLES} text={`${glove.recordFill}/${RECORD_SAMPLES}`} />
+                  </div>
+                )}
+
+                <div className="tiles tiles-3">
+                  <Tile value={`${glove.recordings.length}`} label="Grabaciones" />
+                  <Tile value={`${recordedOfLabel}`} label={`De «${recordLabel}»`} />
+                  <Tile value={`${(glove.recordings.length * RECORD_SAMPLES).toLocaleString('es-MX')}`} label="Filas del CSV" />
+                </div>
+
+                <button className="btn-primary rec-download" onClick={handleDownloadCsv} disabled={glove.recordings.length === 0}>
+                  ⬇ Descargar CSV
+                </button>
+                <div className="recorder-actions">
+                  <button className="btn-secondary" onClick={glove.undoLastRecording} disabled={glove.recordings.length === 0}>
+                    Deshacer última
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    onClick={() =>
+                      askConfirm(`¿Descartar las ${glove.recordings.length} grabaciones sin descargar?`, 'Descartar', () => {
+                        glove.clearRecordings()
+                        setToast('Grabaciones descartadas')
+                      })
+                    }
+                    disabled={glove.recordings.length === 0}
+                  >
+                    Vaciar
+                  </button>
+                </div>
+                <p className="hint">Las grabaciones se guardan solo en memoria: descarga el CSV antes de cerrar la app.</p>
               </div>
-              <p className="hint">Las grabaciones se guardan solo en memoria: descarga el CSV antes de cerrar la app.</p>
-            </div>
+            )}
 
             <div className="history-section">
               <div className="history-header">
@@ -844,6 +846,21 @@ function App() {
                 Restablecer ajustes
               </button>
             </div>
+
+            <div className="card settings-card">
+            <h3 className="settings-title">Herramientas de desarrollador</h3>
+            <div className="switch-row">
+              <span>
+                <strong>Habilitar grabador de dataset</strong>
+                <small>Muestra el panel de grabación en la pantalla Guante</small>
+              </span>
+              <Switch
+                checked={settings.showDatasetRecorder}
+                onChange={(v) => update({ showDatasetRecorder: v })}
+                label="Habilitar grabador de dataset"
+              />
+            </div>
+          </div>
 
             <p className="hint centered">
               SignSpeak v{APP_VERSION} · Apoyo para la comunicación; no sustituye a un intérprete de LSM.

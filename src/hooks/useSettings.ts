@@ -25,6 +25,7 @@ const defaultSettings = (): AppSettings => ({
   autoSpeak: true,
   threshold: 0.8,
   darkMode: prefersDark(),
+  showDatasetRecorder: false,
 })
 
 function getSpanishVoices(): SpeechSynthesisVoice[] {
@@ -79,4 +80,15 @@ export function useSettings() {
   }, [])
 
   return { settings, update, reset, voices, speak, speechSupported: hasSpeech() }
+}
+
+export interface AppSettings {
+  rate: number // 0.5 – 1.5
+  pitch: number // 0.5 – 2
+  volume: number // 0 – 1
+  voiceURI: string // '' = voz por defecto del sistema
+  autoSpeak: boolean // leer en voz alta las señas detectadas por el guante
+  threshold: number // confianza mínima para aceptar una detección
+  darkMode: boolean
+  showDatasetRecorder: boolean // modo desarrollador: muestra el grabador de dataset
 }
