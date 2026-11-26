@@ -244,7 +244,11 @@ Desarrollado con pasión por el equipo de Taller de Investigación II
 
 ## 🕘 Historial de Versiones
 
-### V3.9 (Actual)
+### V4.0 (Actual)
+- Integración de modelo de IA definitivo con arquitectura BatchNormalization y Dropout (0.35) para mayor estabilidad y precisión.
+- Modo Desarrollador implementado para ocultar el grabador de dataset por defecto.
+
+### V3.9
 - Implementación de "Modo Desarrollador" para ocultar el grabador de dataset por defecto.
 - Integración del nuevo modelo de IA con BatchNormalization y Dropout 0.35.
 
